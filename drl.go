@@ -2,7 +2,6 @@ package drl
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -29,6 +28,11 @@ func (d *DRL) Init() {
 	d.RequestTokenValue = 100
 	d.mutex = sync.Mutex{}
 	d.serverIndex = make(map[string]bool)
+
+	go func() {
+		d.cleanServerList()
+		time.Sleep(12 * time.Second)
+	}()
 }
 
 func (d *DRL) uniqueID(s Server) string {
@@ -54,12 +58,25 @@ func (d *DRL) totalLoadAcrossServers() int64 {
 
 	// Update the server list
 	for sID, _ := range toRemove {
-		fmt.Println("Removing: ")
-		fmt.Println(sID)
 		delete(d.serverIndex, sID)
 	}
 
 	return total
+}
+
+func (d *DRL) cleanServerList() {
+	toRemove := map[string]bool{}
+	for sID, _ := range d.serverIndex {
+		_, found := d.Servers.Get(sID)
+		if !found {
+			toRemove[sID] = true
+		}
+	}
+
+	// Update the server list
+	for sID, _ := range toRemove {
+		delete(d.serverIndex, sID)
+	}
 }
 
 func (d *DRL) percentagesAcrossServers() {
@@ -99,7 +116,9 @@ func (d *DRL) calculateTokenBucketValue() error {
 func (d *DRL) AddOrUpdateServer(s Server) error {
 	// Add or update the cache
 	d.mutex.Lock()
-	d.serverIndex[d.uniqueID(s)] = true
+	if d.serverIndex != nil {
+		d.serverIndex[d.uniqueID(s)] = true
+	}
 	d.mutex.Unlock()
 
 	d.Servers.Set(d.uniqueID(s), s)
