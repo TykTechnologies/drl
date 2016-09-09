@@ -38,6 +38,22 @@ func (cache *Cache) Get(key string) (data Server, found bool) {
 	return
 }
 
+// GetNoExtend is a thread-safe way to lookup items
+// Every lookup, also touches the item, hence extending it's life
+func (cache *Cache) GetNoExtend(key string) (data Server, found bool) {
+	cache.mutex.Lock()
+	item, exists := cache.items[key]
+	if !exists || item.expired() {
+		data = Server{}
+		found = false
+	} else {
+		data = item.data
+		found = true
+	}
+	cache.mutex.Unlock()
+	return
+}
+
 // Count returns the number of items in the cache
 // (helpful for tracking memory leaks)
 func (cache *Cache) Count() int {
@@ -78,6 +94,7 @@ func NewCache(duration time.Duration) *Cache {
 	cache := &Cache{
 		ttl:   duration,
 		items: map[string]*Item{},
+		mutex: sync.RWMutex{},
 	}
 	cache.startCleanupTimer()
 	return cache

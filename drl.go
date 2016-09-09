@@ -2,6 +2,7 @@ package drl
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -15,23 +16,27 @@ type Server struct {
 
 type DRL struct {
 	Servers           *Cache
-	mutex             sync.Mutex
-	serverIndex       map[string]bool
+	mutex             sync.RWMutex
+	serverIndex       map[string]Server
 	ThisServerID      string
 	CurrentTotal      int64
 	RequestTokenValue int
 	CurrentTokenValue int
+	Ready             bool
 }
 
 func (d *DRL) Init() {
-	d.Servers = NewCache(10 * time.Second)
+	d.Servers = NewCache(4 * time.Second)
 	d.RequestTokenValue = 100
-	d.mutex = sync.Mutex{}
-	d.serverIndex = make(map[string]bool)
+	d.mutex = sync.RWMutex{}
+	d.serverIndex = make(map[string]Server)
+	d.Ready = true
 
 	go func() {
-		d.cleanServerList()
-		time.Sleep(12 * time.Second)
+		for {
+			d.cleanServerList()
+			time.Sleep(5 * time.Second)
+		}
 	}()
 }
 
@@ -42,24 +47,16 @@ func (d *DRL) uniqueID(s Server) string {
 
 func (d *DRL) totalLoadAcrossServers() int64 {
 	var total int64
-	toRemove := map[string]bool{}
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
 	for sID, _ := range d.serverIndex {
-		thisServerObject, found := d.Servers.Get(sID)
-		if !found {
-			toRemove[sID] = true
-		} else {
-			total += thisServerObject.LoadPerSec
+		_, found := d.Servers.GetNoExtend(sID)
+		if found {
+			total += d.serverIndex[sID].LoadPerSec
 		}
 	}
 
 	d.CurrentTotal = total
-
-	// Update the server list
-	for sID, _ := range toRemove {
-		delete(d.serverIndex, sID)
-	}
 
 	return total
 }
@@ -67,7 +64,8 @@ func (d *DRL) totalLoadAcrossServers() int64 {
 func (d *DRL) cleanServerList() {
 	toRemove := map[string]bool{}
 	for sID, _ := range d.serverIndex {
-		_, found := d.Servers.Get(sID)
+		_, found := d.Servers.GetNoExtend(sID)
+		//fmt.Printf("Checking: %v found? %v\n", sID, found)
 		if !found {
 			toRemove[sID] = true
 		}
@@ -80,26 +78,29 @@ func (d *DRL) cleanServerList() {
 }
 
 func (d *DRL) percentagesAcrossServers() {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
 	for sID, _ := range d.serverIndex {
-		thisServerObject, found := d.Servers.Get(sID)
+		_, found := d.Servers.GetNoExtend(sID)
 		if found {
+			thisServerObject := d.serverIndex[sID]
 			curTot := d.CurrentTotal
 			if d.CurrentTotal == 0 {
 				curTot = 1
 			}
 			thisServerObject.Percentage = float64(thisServerObject.LoadPerSec) / float64(curTot)
-			d.Servers.Set(sID, thisServerObject)
+			d.serverIndex[sID] = thisServerObject
 		}
 	}
 }
 
 func (d *DRL) calculateTokenBucketValue() error {
-	thisServerObject, found := d.Servers.Get(d.ThisServerID)
+	_, found := d.Servers.Get(d.ThisServerID)
 	if !found {
-		return errors.New("Apprently this server does not exist!")
+		return errors.New("Apparently this server does not exist!")
 	}
+	// Use our own index
+	thisServerObject := d.serverIndex[d.ThisServerID]
 
 	var thisTokenValue float64
 	thisTokenValue = float64(d.RequestTokenValue)
@@ -117,10 +118,9 @@ func (d *DRL) AddOrUpdateServer(s Server) error {
 	// Add or update the cache
 	d.mutex.Lock()
 	if d.serverIndex != nil {
-		d.serverIndex[d.uniqueID(s)] = true
+		d.serverIndex[d.uniqueID(s)] = s
 	}
 	d.mutex.Unlock()
-
 	d.Servers.Set(d.uniqueID(s), s)
 
 	// Recalculate totals
@@ -136,4 +136,13 @@ func (d *DRL) AddOrUpdateServer(s Server) error {
 	}
 
 	return nil
+}
+
+func (d *DRL) Report() string {
+	thisServer, found := d.Servers.GetNoExtend(d.ThisServerID)
+	if found {
+		return fmt.Sprintf("[Active Nodes]: %d [Token Bucket Value]: %d [Current Load p/s]: %d [Current Load]: %f", d.CurrentTotal, d.CurrentTokenValue, thisServer.LoadPerSec, thisServer.Percentage)
+	}
+
+	return "Error: server doesn't exist!"
 }
