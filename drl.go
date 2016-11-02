@@ -12,6 +12,7 @@ type Server struct {
 	ID         string
 	LoadPerSec int64
 	Percentage float64
+	TagHash    string
 }
 
 type DRL struct {
@@ -117,6 +118,21 @@ func (d *DRL) calculateTokenBucketValue() error {
 func (d *DRL) AddOrUpdateServer(s Server) error {
 	// Add or update the cache
 	d.mutex.Lock()
+
+	if d.uniqueID(s) != d.ThisServerID {
+		thisServer, found := d.Servers.GetNoExtend(d.ThisServerID)
+		if found {
+			if thisServer.TagHash != s.TagHash {
+				d.mutex.Unlock()
+				return errors.New("Node notification from different tag group, ignoring.")
+			}
+		} else {
+			// We don't know enough about our own host, so let's skip for now until we do
+			d.mutex.Unlock()
+			return errors.New("DRL has no information on current host, waiting...")
+		}
+	}
+	
 	if d.serverIndex != nil {
 		d.serverIndex[d.uniqueID(s)] = s
 	}
