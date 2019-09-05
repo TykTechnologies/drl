@@ -31,7 +31,7 @@ func (d *DRL) SetCurrentTokenValue(newValue int64) {
 	atomic.StoreInt64(&d.currentTokenValue, newValue)
 }
 
-func (d *DRL) CurrentTokenValue(newValue int) int64 {
+func (d *DRL) CurrentTokenValue() int64 {
 	return atomic.LoadInt64(&d.currentTokenValue)
 }
 
