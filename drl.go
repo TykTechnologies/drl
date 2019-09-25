@@ -161,7 +161,11 @@ func (d *DRL) AddOrUpdateServer(s Server) error {
 func (d *DRL) Report() string {
 	thisServer, found := d.Servers.GetNoExtend(d.ThisServerID)
 	if found {
-		return fmt.Sprintf("[Active Nodes]: %d [Token Bucket Value]: %d [Current Load p/s]: %d [Current Load]: %f", d.CurrentTotal, d.CurrentTokenValue, thisServer.LoadPerSec, thisServer.Percentage)
+		return fmt.Sprintf("[Active Nodes]: %d [Token Bucket Value]: %d [Current Load p/s]: %d [%% of Rate]: %f",
+			d.Servers.Count(),
+			d.CurrentTokenValue(),
+			thisServer.LoadPerSec,
+			thisServer.Percentage)
 	}
 
 	return "Error: server doesn't exist!"
