@@ -1,6 +1,7 @@
 package drl
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -24,7 +25,19 @@ type DRL struct {
 	CurrentTotal      int64
 	RequestTokenValue int
 	currentTokenValue int64
-	Ready             bool
+	open              atomic.Value
+	stopC             chan struct{}
+}
+
+func (d *DRL) Ready() bool {
+	return d.IsOpen()
+}
+
+func (d *DRL) IsOpen() bool {
+	if v := d.open.Load(); v != nil {
+		return v.(bool)
+	}
+	return false
 }
 
 func (d *DRL) SetCurrentTokenValue(newValue int64) {
@@ -35,21 +48,35 @@ func (d *DRL) CurrentTokenValue() int64 {
 	return atomic.LoadInt64(&d.currentTokenValue)
 }
 
-func (d *DRL) Init() {
+func (d *DRL) Init(ctx context.Context) {
 	d.Servers = NewCache(4 * time.Second)
 	d.RequestTokenValue = 100
-	d.mutex = sync.Mutex{}
 	d.serverIndex = make(map[string]Server)
-	d.Ready = true
+	d.open.Store(true)
+	go d.startLoop(ctx)
+}
 
-	go func() {
-		for {
+func (d *DRL) startLoop(ctx context.Context) {
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			// If the context is cancelled we treat this as the same as calling DRL.Close
+			if d.IsOpen() {
+				d.open.Store(false)
+				close(d.stopC)
+				d.Servers.Close()
+			}
+			return
+		case <-d.stopC:
+			return
+		case <-t.C:
 			d.mutex.Lock()
 			d.cleanServerList()
 			d.mutex.Unlock()
-			time.Sleep(5 * time.Second)
 		}
-	}()
+	}
 }
 
 func (d *DRL) uniqueID(s Server) string {
@@ -57,12 +84,21 @@ func (d *DRL) uniqueID(s Server) string {
 	return uniqueID
 }
 
+func (d *DRL) Close() {
+	if d.IsOpen() {
+		d.stopC <- struct{}{}
+		d.open.Store(false)
+		close(d.stopC)
+		d.Servers.Close()
+	}
+}
+
 func (d *DRL) totalLoadAcrossServers() int64 {
 	var total int64
-	for sID, _ := range d.serverIndex {
-		_, found := d.Servers.GetNoExtend(sID)
+	for s := range d.serverIndex {
+		_, found := d.Servers.GetNoExtend(s)
 		if found {
-			total += d.serverIndex[sID].LoadPerSec
+			total += d.serverIndex[s].LoadPerSec
 		}
 	}
 
@@ -73,30 +109,29 @@ func (d *DRL) totalLoadAcrossServers() int64 {
 
 func (d *DRL) cleanServerList() {
 	toRemove := map[string]bool{}
-	for sID, _ := range d.serverIndex {
-		_, found := d.Servers.GetNoExtend(sID)
-		//fmt.Printf("Checking: %v found? %v\n", sID, found)
+	for s := range d.serverIndex {
+		_, found := d.Servers.GetNoExtend(s)
 		if !found {
-			toRemove[sID] = true
+			toRemove[s] = true
 		}
 	}
 
 	// Update the server list
-	for sID, _ := range toRemove {
-		delete(d.serverIndex, sID)
+	for s := range toRemove {
+		delete(d.serverIndex, s)
 	}
 }
 
 func (d *DRL) percentagesAcrossServers() {
-	for sID, _ := range d.serverIndex {
-		_, found := d.Servers.GetNoExtend(sID)
+	for s := range d.serverIndex {
+		_, found := d.Servers.GetNoExtend(s)
 		if found {
-			thisServerObject := d.serverIndex[sID]
+			thisServerObject := d.serverIndex[s]
 
 			// The compensation should be flat out based on servers,
 			// not on current load, it tends to skew too conservative
 			thisServerObject.Percentage = 1 / float64(d.Servers.Count())
-			d.serverIndex[sID] = thisServerObject
+			d.serverIndex[s] = thisServerObject
 		}
 	}
 }
@@ -161,7 +196,11 @@ func (d *DRL) AddOrUpdateServer(s Server) error {
 func (d *DRL) Report() string {
 	thisServer, found := d.Servers.GetNoExtend(d.ThisServerID)
 	if found {
-		return fmt.Sprintf("[Active Nodes]: %d [Token Bucket Value]: %d [Current Load p/s]: %d [Current Load]: %f", d.CurrentTotal, d.CurrentTokenValue, thisServer.LoadPerSec, thisServer.Percentage)
+		return fmt.Sprintf("[Active Nodes]: %d [Token Bucket Value]: %d [Current Load p/s]: %d [%% of Rate]: %f",
+			d.Servers.Count(),
+			d.CurrentTokenValue(),
+			thisServer.LoadPerSec,
+			thisServer.Percentage)
 	}
 
 	return "Error: server doesn't exist!"
