@@ -1,6 +1,7 @@
 package drl
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -93,7 +94,7 @@ func (c *Cache) cleanup() {
 	c.mutex.Unlock()
 }
 
-func (c *Cache) startCleanupTimer() {
+func (c *Cache) startCleanupTimer(ctx context.Context) {
 	duration := c.ttl
 	if duration < time.Second {
 		duration = time.Second
@@ -102,6 +103,9 @@ func (c *Cache) startCleanupTimer() {
 	defer t.Stop()
 	for {
 		select {
+		case <-ctx.Done():
+			c.open.Store(false)
+			return
 		case <-c.stopC:
 			c.open.Store(false)
 			return
@@ -112,13 +116,13 @@ func (c *Cache) startCleanupTimer() {
 }
 
 // NewCache is a helper to create instance of the Cache struct
-func NewCache(duration time.Duration) *Cache {
+func NewCache(ctx context.Context, duration time.Duration) *Cache {
 	cache := &Cache{
 		ttl:   duration,
 		items: map[string]*Item{},
 		stopC: make(chan struct{}),
 	}
 	cache.open.Store(true)
-	go cache.startCleanupTimer()
+	go cache.startCleanupTimer(ctx)
 	return cache
 }

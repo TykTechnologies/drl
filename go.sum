@@ -1,0 +1,4 @@
+github.com/TykTechnologies/leakybucket v0.0.0-20170301023702-71692c943e3c h1:j6fd0Fz1R4oSWOmcooGjrdahqrML+btQ+PfEJw8SzbA=
+github.com/TykTechnologies/leakybucket v0.0.0-20170301023702-71692c943e3c/go.mod h1:GnHUbsQx+ysI10osPhUdTmsxcE7ef64cVp38Fdyd7e0=
+go.uber.org/goleak v0.10.0 h1:G3eWbSNIskeRqtsN/1uI5B+eP73y3JUuBsv9AZjehb4=
+go.uber.org/goleak v0.10.0/go.mod h1:VCZuO8V8mFPlL0F5J5GK1rtHV3DrFcQ1R8ryq7FK0aI=
