@@ -8,6 +8,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func init() {
+	// Modify the minimumCleanupInterval to make expiry faster
+	minimumCleanupInterval = 100 * time.Millisecond
+}
+
 func TestCache(t *testing.T) {
 	t.Parallel()
 
@@ -56,22 +61,26 @@ func TestCache(t *testing.T) {
 	t.Run("Item evictions", func(t *testing.T) {
 		t.Parallel()
 
-		// This test ensures that we are correctly evicting expired items. We set ttl
-		// to me 5ms, this will force the eviction loop to use 1s interval for
-		// eviction.
+		// Test with 10 items, calculate tick to hit cleanup interval.
 
-		c := NewCache(5 * time.Millisecond)
+		addItemInterval := minimumCleanupInterval / 10
+
+		// This test ensures that we are correctly evicting expired items.
+		// The expiry is very short, so we know that all the items added until
+		// the first expiry will immediately expire.
+
+		c := NewCache(time.Microsecond)
 		defer c.Close()
 
-		// Offset adding items by 50ms, so we can more reliably predict how many
-		// items will be left in the cache at expiry.
+		// Offset adding items by half of an addTicketInterval, so we can
+		// reliably predict how many items will be left in the cache at expiry.
 
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(addItemInterval / 2)
 
-		// Start a ticker so we may add a new cache item every 100ms.
+		// Start a ticker so we may add a new cache item every addItemInterval.
 		// Add 14 items, 5 of which will be added in the next expiry interval.
 
-		tick := time.NewTicker(100 * time.Millisecond)
+		tick := time.NewTicker(addItemInterval)
 		defer tick.Stop()
 
 		var n int64

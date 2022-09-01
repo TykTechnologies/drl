@@ -94,10 +94,12 @@ func (c *Cache) cleanup() {
 	c.mutex.Unlock()
 }
 
+var minimumCleanupInterval = time.Second
+
 func (c *Cache) startCleanupTimer() {
 	duration := c.ttl
-	if duration < time.Second {
-		duration = time.Second
+	if duration < minimumCleanupInterval {
+		duration = minimumCleanupInterval
 	}
 	t := time.NewTicker(duration)
 	defer t.Stop()
