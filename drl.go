@@ -64,7 +64,7 @@ func (d *DRL) startLoop(ctx context.Context) {
 		case <-ctx.Done():
 			d.Close()
 			return
-		case _, _ = <-d.stopC:
+		case <-d.stopC:
 			return
 		case <-t.C:
 			d.mutex.Lock()
