@@ -27,7 +27,6 @@ type DRL struct {
 	currentTokenValue int64
 	open              atomic.Value
 	stopC             chan struct{}
-	once              sync.Once
 }
 
 func (d *DRL) Ready() bool {
@@ -81,11 +80,11 @@ func (d *DRL) uniqueID(s Server) string {
 }
 
 func (d *DRL) Close() {
-	d.once.Do(func() {
-		d.open.Store(false)
+	wasOpen, _ := d.open.Swap(false).(bool)
+	if wasOpen {
 		close(d.stopC)
 		d.Servers.Close()
-	})
+	}
 }
 
 func (d *DRL) totalLoadAcrossServers() int64 {
