@@ -35,8 +35,8 @@ func (d *DRL) Ready() bool {
 }
 
 func (d *DRL) IsOpen() bool {
-	value, ok := d.open.Load().(bool)
-	return value && ok
+	open, _ := d.open.Load().(bool)
+	return open
 }
 
 func (d *DRL) SetCurrentTokenValue(newValue int64) {
