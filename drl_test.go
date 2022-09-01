@@ -45,6 +45,13 @@ func TestDRLCancellation(t *testing.T) {
 	<-ctx.Done()
 }
 
+func TestDRLCloser(t *testing.T) {
+	t.Parallel()
+
+	ratelimiter := setupDRL(context.Background())
+	ratelimiter.Close()
+}
+
 func setupDRL(ctx context.Context) *drl.DRL {
 	result := &drl.DRL{}
 	result.Init(ctx)
