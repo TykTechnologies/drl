@@ -27,6 +27,7 @@ type DRL struct {
 	currentTokenValue int64
 	open              atomic.Value
 	stopC             chan struct{}
+	once              sync.Once
 }
 
 func (d *DRL) Ready() bool {
@@ -34,10 +35,7 @@ func (d *DRL) Ready() bool {
 }
 
 func (d *DRL) IsOpen() bool {
-	if v := d.open.Load(); v != nil {
-		return v.(bool)
-	}
-	return false
+	return d.open.Load().(bool)
 }
 
 func (d *DRL) SetCurrentTokenValue(newValue int64) {
@@ -52,7 +50,9 @@ func (d *DRL) Init(ctx context.Context) {
 	d.Servers = NewCache(4 * time.Second)
 	d.RequestTokenValue = 100
 	d.serverIndex = make(map[string]Server)
+	d.stopC = make(chan struct{})
 	d.open.Store(true)
+
 	go d.startLoop(ctx)
 }
 
@@ -62,14 +62,9 @@ func (d *DRL) startLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			// If the context is cancelled we treat this as the same as calling DRL.Close
-			if d.IsOpen() {
-				d.open.Store(false)
-				close(d.stopC)
-				d.Servers.Close()
-			}
+			d.Close()
 			return
-		case <-d.stopC:
+		case _, _ = <-d.stopC:
 			return
 		case <-t.C:
 			d.mutex.Lock()
@@ -85,12 +80,11 @@ func (d *DRL) uniqueID(s Server) string {
 }
 
 func (d *DRL) Close() {
-	if d.IsOpen() {
-		d.stopC <- struct{}{}
+	d.once.Do(func() {
 		d.open.Store(false)
 		close(d.stopC)
 		d.Servers.Close()
-	}
+	})
 }
 
 func (d *DRL) totalLoadAcrossServers() int64 {
