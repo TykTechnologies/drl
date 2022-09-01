@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
@@ -30,6 +31,18 @@ func TestDRLInit(t *testing.T) {
 		err := addOrUpdateServer(ratelimiter, server)
 		assert.NoError(t, err)
 	})
+}
+
+func TestDRLCancellation(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	ratelimiter := setupDRL(ctx)
+	defer ratelimiter.Close()
+
+	<-ctx.Done()
 }
 
 func setupDRL(ctx context.Context) *drl.DRL {
