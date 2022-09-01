@@ -76,7 +76,8 @@ func (c *Cache) Count() int {
 
 // Close frees up resources used by the cache.
 func (c *Cache) Close() {
-	if c.IsOpen() {
+	wasOpen := c.open.Swap(false)
+	if wasOpen.(bool) {
 		c.stopC <- struct{}{}
 		c.items = nil
 		close(c.stopC)
@@ -103,7 +104,6 @@ func (c *Cache) startCleanupTimer() {
 	for {
 		select {
 		case <-c.stopC:
-			c.open.Store(false)
 			return
 		case <-t.C:
 			c.cleanup()
