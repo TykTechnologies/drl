@@ -34,7 +34,7 @@ func TestCache(t *testing.T) {
 		assert.False(t, c.IsOpen(), "expected the cache to be closed")
 	})
 
-	t.Run("Set, Get", func(t *testing.T) {
+	t.Run("Set, Get valid", func(t *testing.T) {
 		t.Parallel()
 
 		c := NewCache(10 * time.Millisecond)
@@ -46,7 +46,7 @@ func TestCache(t *testing.T) {
 		assert.True(t, ok, "expected valid key")
 	})
 
-	t.Run("Set, Get", func(t *testing.T) {
+	t.Run("Set, Get expired", func(t *testing.T) {
 		t.Parallel()
 
 		c := NewCache(0)
