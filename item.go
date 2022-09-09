@@ -7,26 +7,26 @@ import (
 
 // Item represents a record in the cache map
 type Item struct {
-	sync.RWMutex
+	mu      sync.RWMutex
 	data    Server
 	expires *time.Time
 }
 
 func (item *Item) touch(duration time.Duration) {
-	item.Lock()
+	item.mu.Lock()
 	expiration := time.Now().Add(duration)
 	item.expires = &expiration
-	item.Unlock()
+	item.mu.Unlock()
 }
 
 func (item *Item) expired() bool {
 	var value bool
-	item.RLock()
+	item.mu.RLock()
 	if item.expires == nil {
 		value = true
 	} else {
 		value = item.expires.Before(time.Now())
 	}
-	item.RUnlock()
+	item.mu.RUnlock()
 	return value
 }

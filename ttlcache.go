@@ -76,7 +76,8 @@ func (c *Cache) Count() int {
 
 // Close frees up resources used by the cache.
 func (c *Cache) Close() {
-	if c.IsOpen() {
+	wasOpen, _ := c.open.Swap(false).(bool)
+	if wasOpen {
 		c.stopC <- struct{}{}
 		c.items = nil
 		close(c.stopC)
@@ -93,17 +94,18 @@ func (c *Cache) cleanup() {
 	c.mutex.Unlock()
 }
 
+var minimumCleanupInterval = time.Second
+
 func (c *Cache) startCleanupTimer() {
 	duration := c.ttl
-	if duration < time.Second {
-		duration = time.Second
+	if duration < minimumCleanupInterval {
+		duration = minimumCleanupInterval
 	}
 	t := time.NewTicker(duration)
 	defer t.Stop()
 	for {
 		select {
 		case <-c.stopC:
-			c.open.Store(false)
 			return
 		case <-t.C:
 			c.cleanup()

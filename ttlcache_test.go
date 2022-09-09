@@ -4,35 +4,85 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
+func init() {
+	// Modify the minimumCleanupInterval to make expiry faster
+	minimumCleanupInterval = 100 * time.Millisecond
+}
+
 func TestCache(t *testing.T) {
-	t.Run("IsOpen", func(ts *testing.T) {
+	t.Parallel()
+
+	t.Run("IsOpen", func(t *testing.T) {
+		t.Parallel()
+
 		c := NewCache(0)
-		if !c.IsOpen() {
-			t.Error("expected the cache to be open")
-		}
-		c.Close()
-	})
-	t.Run("Close", func(ts *testing.T) {
-		c := NewCache(0)
-		c.Close()
-		if c.IsOpen() {
-			t.Error("expected the cache to be closed")
-		}
-	})
-	t.Run("Item evictions", func(ts *testing.T) {
-		// This test ensures that we are correctly evicting expired items. We set ttl
-		// to me 1ms, this will force the eviction loop to use 1s interval for
-		// eviction.
-		c := NewCache(time.Millisecond)
 		defer c.Close()
 
-		// Ticking at 100ms we will reach 1s after 10 ticks, meaning any items added
-		// after 10th tick will be available in the cache because tey will be evicted
-		// on 20th tick.
-		tick := time.NewTicker(100 * time.Millisecond)
+		assert.True(t, c.IsOpen(), "expected the cache to be open")
+	})
+
+	t.Run("Close", func(t *testing.T) {
+		t.Parallel()
+
+		c := NewCache(0)
+		c.Close()
+
+		assert.False(t, c.IsOpen(), "expected the cache to be closed")
+	})
+
+	t.Run("Set, Get valid", func(t *testing.T) {
+		t.Parallel()
+
+		c := NewCache(10 * time.Millisecond)
+		defer c.Close()
+
+		key := "key"
+		c.Set(key, Server{})
+		_, ok := c.Get(key)
+		assert.True(t, ok, "expected valid key")
+	})
+
+	t.Run("Set, Get expired", func(t *testing.T) {
+		t.Parallel()
+
+		c := NewCache(0)
+		defer c.Close()
+
+		key := "key"
+		c.Set(key, Server{})
+		_, ok := c.Get(key)
+		assert.False(t, ok, "expected key to be expired")
+	})
+
+	t.Run("Item evictions", func(t *testing.T) {
+		t.Parallel()
+
+		// Test with 10 items, calculate tick to hit cleanup interval.
+
+		addItemInterval := minimumCleanupInterval / 10
+
+		// This test ensures that we are correctly evicting expired items.
+		// The expiry is very short, so we know that all the items added until
+		// the first expiry will immediately expire.
+
+		c := NewCache(time.Microsecond)
+		defer c.Close()
+
+		// Offset adding items by half of an addTicketInterval, so we can
+		// reliably predict how many items will be left in the cache at expiry.
+
+		time.Sleep(addItemInterval / 2)
+
+		// Start a ticker so we may add a new cache item every addItemInterval.
+		// Add 14 items, 5 of which will be added in the next expiry interval.
+
+		tick := time.NewTicker(addItemInterval)
 		defer tick.Stop()
+
 		var n int64
 		for range tick.C {
 			n++
@@ -41,20 +91,12 @@ func TestCache(t *testing.T) {
 			}
 			c.Set(strconv.FormatInt(n, 10), Server{})
 		}
-		count := c.Count()
-		if count != 5 {
-			ts.Errorf("expected 5 items to remain in the cache got %d instead", count)
-		}
-		_, ok := c.Get("14")
-		if ok {
-			t.Error("expected the key to have expired")
-		}
-		key := "key"
-		c.Set(key, Server{})
-		_, ok = c.Get(key)
-		if !ok {
-			t.Error("expected the key to exist")
-		}
+
+		// Assert the expected cache item count.
+
+		got := c.Count()
+		want := 5
+		assert.Equal(t, want, got, "expected %d items to remain in the cache got %d instead", want, got)
 	})
 }
 
