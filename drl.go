@@ -25,7 +25,7 @@ type DRL struct {
 	CurrentTotal      int64
 	RequestTokenValue int
 	currentTokenValue int64
-	open              atomic.Value
+	isClosed          int32
 	stopC             chan struct{}
 }
 
@@ -34,8 +34,7 @@ func (d *DRL) Ready() bool {
 }
 
 func (d *DRL) IsOpen() bool {
-	open, _ := d.open.Load().(bool)
-	return open
+	return atomic.LoadInt32(&d.isClosed) == OPEN
 }
 
 func (d *DRL) SetCurrentTokenValue(newValue int64) {
@@ -51,7 +50,6 @@ func (d *DRL) Init(ctx context.Context) {
 	d.RequestTokenValue = 100
 	d.serverIndex = make(map[string]Server)
 	d.stopC = make(chan struct{})
-	d.open.Store(true)
 
 	go d.startLoop(ctx)
 }
@@ -80,8 +78,8 @@ func (d *DRL) uniqueID(s Server) string {
 }
 
 func (d *DRL) Close() {
-	wasOpen, _ := d.open.Swap(false).(bool)
-	if wasOpen {
+	wasClosed := atomic.SwapInt32(&d.isClosed, CLOSED)
+	if wasClosed == 0 {
 		close(d.stopC)
 		d.Servers.Close()
 	}
