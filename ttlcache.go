@@ -12,7 +12,8 @@ type Cache struct {
 	ttl   time.Duration
 	items map[string]*Item
 	stopC chan struct{}
-	open  atomic.Value
+
+	isClosed int32
 }
 
 // IsOpen returns true if cache is open. If true this means the cache is
@@ -20,7 +21,7 @@ type Cache struct {
 // will be false when that background process has been terminated marking this
 // cache unsuitable for use.
 func (c *Cache) IsOpen() bool {
-	return c.open.Load().(bool)
+	return atomic.LoadInt32(&c.isClosed) == OPEN
 }
 
 // Set is a thread-safe way to add new items to the map
@@ -76,8 +77,8 @@ func (c *Cache) Count() int {
 
 // Close frees up resources used by the cache.
 func (c *Cache) Close() {
-	wasOpen, _ := c.open.Swap(false).(bool)
-	if wasOpen {
+	wasClosed := atomic.SwapInt32(&c.isClosed, CLOSED)
+	if wasClosed == 0 {
 		c.stopC <- struct{}{}
 		c.items = nil
 		close(c.stopC)
@@ -120,7 +121,6 @@ func NewCache(duration time.Duration) *Cache {
 		items: map[string]*Item{},
 		stopC: make(chan struct{}),
 	}
-	cache.open.Store(true)
 	go cache.startCleanupTimer()
 	return cache
 }
