@@ -80,9 +80,15 @@ func (c *Cache) Close() {
 	wasClosed := atomic.SwapInt32(&c.isClosed, CLOSED)
 	if wasClosed == 0 {
 		c.stopC <- struct{}{}
-		c.items = nil
+		c.clear()
 		close(c.stopC)
 	}
+}
+
+func (c *Cache) clear() {
+	c.mutex.Lock()
+	c.items = nil
+	c.mutex.Unlock()
 }
 
 func (c *Cache) cleanup() {
