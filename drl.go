@@ -48,6 +48,7 @@ func (d *DRL) CurrentTokenValue() int64 {
 func (d *DRL) Init(ctx context.Context) {
 	d.Servers = NewCache(4 * time.Second)
 	d.RequestTokenValue = 100
+	d.currentTokenValue = 100
 	d.serverIndex = make(map[string]Server)
 	d.stopC = make(chan struct{})
 
