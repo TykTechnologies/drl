@@ -27,6 +27,8 @@ type DRL struct {
 	currentTokenValue int64
 	isClosed          int32
 	stopC             chan struct{}
+
+	SkipDRLSync bool
 }
 
 func (d *DRL) Ready() bool {
@@ -140,7 +142,7 @@ func (d *DRL) calculateTokenBucketValue() error {
 	var thisTokenValue float64
 	thisTokenValue = float64(d.RequestTokenValue)
 
-	if thisServerObject.Percentage > 0 {
+	if !d.SkipDRLSync && thisServerObject.Percentage > 0 {
 		thisTokenValue = float64(d.RequestTokenValue) / thisServerObject.Percentage
 	}
 
